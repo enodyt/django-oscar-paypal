@@ -108,7 +108,12 @@ def _fetch_response(method, extra_params):
     if not txn.is_successful:
         msg = "Error %s - %s" % (txn.error_code, txn.error_message)
         logger.error(msg)
-        raise exceptions.PayPalError(msg)
+        err = {
+            'code': txn.error_code,
+            'token': txn.token,
+            'msg': txn.error_message,
+        }
+        raise exceptions.PayPalError(err)
 
     return txn
 

@@ -15,7 +15,7 @@ from django.utils import six
 from django.utils.translation import ugettext_lazy as _
 
 import oscar
-from oscar.apps.payment.exceptions import UnableToTakePayment
+from oscar.apps.payment.exceptions import RedirectRequired
 from oscar.core.loading import get_class, get_model
 from oscar.apps.shipping.methods import FixedPrice, NoShippingRequired
 
@@ -302,14 +302,37 @@ class SuccessResponseView(PaymentDetailsView):
         Complete payment with PayPal - this calls the 'DoExpressCheckout'
         method to capture the money from the initial transaction.
         """
+        def handle_paypal_error(code=None):
+            basket = self.get_submitted_basket()
+            basket.thaw()
+            self.request.basket = basket
+            error_msg = _("A problem occurred while processing payment for this "
+                          "order - no payment has been taken.  Please "
+                          "contact customer services if this problem persists")
+            if code:
+                error_msg += ' [Code: %s]' % code
+            messages.error(self.request, error_msg)
+            raise RedirectRequired(reverse('basket:summary'))
         try:
             confirm_txn = confirm_transaction(
                 kwargs['payer_id'], kwargs['token'], kwargs['txn'].amount,
                 kwargs['txn'].currency)
-        except PayPalError:
-            raise UnableToTakePayment()
+        except PayPalError as e:
+            ## 10486 error should be redirect to paypal
+            if e.message['code'] == '10486':
+                if getattr(settings, 'PAYPAL_SANDBOX_MODE', True):
+                    url = 'https://www.sandbox.paypal.com/webscr'
+                else:
+                    url = 'https://www.paypal.com/webscr'
+                params = (('cmd', '_express-checkout'),
+                          ('token', kwargs['token']),)
+                url = '%s?%s' % (url, urlencode(params))
+                raise RedirectRequired(url)
+            else:
+                handle_paypal_error(e.message['code'])
+            #raise PaymentError(msg)
         if not confirm_txn.is_successful:
-            raise UnableToTakePayment()
+            handle_paypal_error()
 
         # Record payment source and event
         source_type, is_created = SourceType.objects.get_or_create(
