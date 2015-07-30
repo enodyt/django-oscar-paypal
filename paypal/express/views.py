@@ -388,6 +388,9 @@ class SuccessResponseView(PaymentDetailsView):
         elif len(parts) > 1:
             first_name = parts[0]
             last_name = " ".join(parts[1:])
+        # FIXME
+        if not first_name:
+            first_name = last_name
         return ShippingAddress(
             first_name=first_name,
             last_name=last_name,
