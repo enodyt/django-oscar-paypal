@@ -358,9 +358,15 @@ class SuccessResponseView(PaymentDetailsView):
         parts = ship_to_name.split()
         if len(parts) == 1:
             last_name = ship_to_name
+            first_name = ship_to_name
         elif len(parts) > 1:
             first_name = parts[0]
             last_name = " ".join(parts[1:])
+        # dodlsicherung
+        if not first_name:
+            first_name = ship_to_name
+        if not last_name:
+            last_name = ship_to_name
         return ShippingAddress(
             first_name=first_name,
             last_name=last_name,
