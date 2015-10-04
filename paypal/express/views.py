@@ -62,7 +62,7 @@ class RedirectView(CheckoutSessionMixin, RedirectView):
             messages.error(
                 self.request, _("An error occurred communicating with PayPal"))
             if self.as_payment_method:
-                url = reverse('checkout:payment-details')
+                url = reverse('basket:summary')
             else:
                 url = reverse('basket:summary')
             return url
@@ -237,6 +237,7 @@ class SuccessResponseView(PaymentDetailsView):
 
         # This context generation only runs when in preview mode
         ctx.update({
+            'agb_url': settings.AGB_URL,
             'payer_id': self.payer_id,
             'token': self.token,
             'paypal_user_email': self.txn.value('EMAIL'),
@@ -277,8 +278,34 @@ class SuccessResponseView(PaymentDetailsView):
             messages.error(self.request, error_msg)
             return HttpResponseRedirect(reverse('basket:summary'))
 
-        submission = self.build_submission(basket=basket)
-        return self.submit(**submission)
+        # submission = self.build_submission(basket=basket)
+        # return self.submit(**submission)
+        return self.handle_place_order_submission(request, basket=basket)
+
+    def handle_place_order_submission(self, request, basket):
+        """
+        Handle a request to place an order.
+
+        This method is normally called after the customer has clicked "place
+        order" on the preview page. It's responsible for (re-)validating any
+        form information then building the submission dict to pass to the
+        `submit` method.
+
+        If forms are submitted on your payment details view, you should
+        override this method to ensure they are valid before extracting their
+        data into the submission dict and passing it onto `submit`.
+        """
+        agbs = request.POST.get("agb", None)
+        if not agbs:
+            error_msg = _(
+                "To place your order, you need to agree to our terms and condtition")
+            messages.error(request, error_msg)
+            url = "%s?token=%s&PayerID=%s" % (
+                reverse('paypal-success-response',
+                        kwargs=dict(basket_id=basket.id)), self.token,
+                self.payer_id)
+            return HttpResponseRedirect(url)
+        return self.submit(**self.build_submission(basket=basket))
 
     def build_submission(self, **kwargs):
         submission = super(
