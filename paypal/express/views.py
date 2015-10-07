@@ -394,6 +394,10 @@ class SuccessResponseView(PaymentDetailsView):
             first_name = ship_to_name
         if not last_name:
             last_name = ship_to_name
+        if not first_name:
+            first_name = 'xxxxxxxxxxxxxx'
+        if not last_name:
+            last_name = 'xxxxxxxxxxxxxx'
         return ShippingAddress(
             first_name=first_name,
             last_name=last_name,

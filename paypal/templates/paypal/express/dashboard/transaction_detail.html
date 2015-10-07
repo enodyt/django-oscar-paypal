@@ -37,6 +37,12 @@
             <tr><th>{% trans "Method" %}</th><td>{{ txn.method }}</td></tr>
             <tr><th>{% trans "Amount" %}</th><td>{{ txn.amount|default:"-" }}</td></tr>
             <tr><th>{% trans "Currency" %}</th><td>{{ txn.currency }}</td></tr>
+            <tr><th>{% trans "Shipping Address" %}</th><td>{{ shipping_addr|default:"-"|safe }}</td></tr>
+            <tr><th>{% trans "Billing Address" %}</th><td>{{ billing_addr|default:"-"|safe }}</td></tr>
+            <tr><th>{% trans "Shopping Cart" %}</th><td>{{ shopping_cart|default:"-"|safe }}</td></tr>
+            <tr><th>{% trans "Customer" %}</th><td>{{ customer.id|default:"-" }}</td></tr>
+            <tr><th>{% trans "Basket" %}</th><td>{{ basket.id|default:"-" }}</td></tr>
+            <tr><th>{% trans "E-Mail" %}</th><td>{{ email|default:"-" }}</td></tr>
             <tr><th>{% trans "Result" %}</th><td>{{ txn.ack }}</td></tr>
             <tr><th>{% trans "Token" %}</th><td>{{ txn.token|default:"-" }}</td></tr>
             <tr><th>{% trans "Error code" %}</th><td>{{ txn.error_code|default:'-' }}</td></tr>

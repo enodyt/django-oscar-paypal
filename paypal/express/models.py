@@ -70,3 +70,5 @@ class ExpressTransactionPreAuth(models.Model):
     basket = models.ForeignKey(Basket, blank=True, null=True,
                                related_name="express_transaction",
                                on_delete=models.SET_NULL)
+    class Meta:
+        app_label = 'paypal'
