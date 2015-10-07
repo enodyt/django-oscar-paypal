@@ -3,8 +3,14 @@ import re
 
 from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
+from django.contrib.auth import get_user_model
+from django.utils.translation import ugettext_lazy as _
+
+from django_extensions.db.fields import CreationDateTimeField
 
 from paypal import base
+
+Basket = models.get_model('basket', 'Basket')
 
 
 @python_2_unicode_compatible
@@ -45,3 +51,22 @@ class ExpressTransaction(base.ResponseModel):
         return 'method: %s: token: %s' % (
             self.method, self.token)
 
+
+class ExpressTransactionPreAuth(models.Model):
+    """
+    store pre-auth data
+    """
+    billing_addr = models.TextField(blank=True, null=True)
+    shipping_addr = models.TextField(blank=True, null=True)
+    shopping_cart = models.TextField(blank=True, null=True)
+    token = models.CharField(_("Token"), max_length=32, null=False,
+                             blank=False)
+    email = models.CharField(_("E-Mail"), max_length=128, null=True,
+                             blank=True)
+    customer = models.ForeignKey(get_user_model(), blank=True, null=True,
+                                 on_delete=models.SET_NULL,
+                                 related_name="express_transaction")
+    created = CreationDateTimeField()
+    basket = models.ForeignKey(Basket, blank=True, null=True,
+                               related_name="express_transaction",
+                               on_delete=models.SET_NULL)
