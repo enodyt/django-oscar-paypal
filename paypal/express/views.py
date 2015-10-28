@@ -18,6 +18,7 @@ import oscar
 from oscar.apps.payment.exceptions import RedirectRequired
 from oscar.core.loading import get_class, get_model
 from oscar.apps.shipping.methods import FixedPrice, NoShippingRequired
+from oscar.apps.checkout import signals
 
 from paypal.express.facade import (
     get_paypal_url, fetch_transaction_details, confirm_transaction)
@@ -38,6 +39,8 @@ Applicator = get_class('offer.utils', 'Applicator')
 Selector = get_class('partner.strategy', 'Selector')
 Source = get_model('payment', 'Source')
 SourceType = get_model('payment', 'SourceType')
+Order = get_model("order", "Order")
+OrderPlacementMixin = get_class('checkout.mixins', 'OrderPlacementMixin')
 
 logger = logging.getLogger('paypal.express')
 
@@ -154,6 +157,66 @@ class CancelResponseView(RedirectView):
     def get_redirect_url(self, **kwargs):
         messages.error(self.request, _("PayPal transaction cancelled"))
         return reverse('basket:summary')
+
+
+class HandlePaymentView(OrderPlacementMixin, RedirectView):
+
+    def get(self, request, *args, **kwargs):
+        """
+        Complete payment with PayPal - this calls the 'DoExpressCheckout'
+        method to capture the money from the initial transaction.
+        """
+        def handle_paypal_error(code=None):
+            error_msg = _("A problem occurred while processing payment for "
+                          "this order - no payment has been taken.  Please "
+                          "contact customer services if this problem persists")
+            if code:
+                error_msg += ' [Code: %s]' % code
+            messages.error(self.request, error_msg)
+            # set redirect url
+            self._redirect_url = reverse('customer:order', kwargs={
+                "order_number": kwargs["order_number"]})
+        try:
+            confirm_txn = confirm_transaction(
+                kwargs['payer_id'], kwargs['token'], kwargs['amount'],
+                kwargs['currency'])
+        except PayPalError as e:
+            # 10486 error should be redirect to paypal
+            if e.message['code'] == '10486':
+                if getattr(settings, 'PAYPAL_SANDBOX_MODE', True):
+                    url = 'https://www.sandbox.paypal.com/webscr'
+                else:
+                    url = 'https://www.paypal.com/webscr'
+                params = (('cmd', '_express-checkout'),
+                          ('token', kwargs['token']),)
+                url = '%s?%s' % (url, urlencode(params))
+                # we need to redirect to paypal so do so
+                self._redirect_url = url
+            else:
+                handle_paypal_error(e.message['code'])
+        else:
+            if not confirm_txn.is_successful:
+                handle_paypal_error()
+            else:
+                # finally everythings ok: Record payment source and event
+                order = Order.objects.get(number=kwargs["order_number"])
+                source_type, is_created = SourceType.objects.get_or_create(
+                    name='PayPal')
+                source = Source(source_type=source_type,
+                                currency=confirm_txn.currency,
+                                amount_allocated=confirm_txn.amount,
+                                amount_debited=confirm_txn.amount)
+                self.add_payment_source(source)
+                self.add_payment_event('Settled', confirm_txn.amount,
+                                       reference=confirm_txn.correlation_id)
+                self.save_payment_details(order)
+        return super(HandlePaymentView, self).get(request, *args, **kwargs)
+
+    def get_redirect_url(self, **kwargs):
+        try:
+            return self._redirect_url
+        except AttributeError:
+            return reverse("checkout:thank-you")
 
 
 # Upgrading notes: when we drop support for Oscar 0.6, this class can be
@@ -324,53 +387,34 @@ class SuccessResponseView(PaymentDetailsView):
         # method as they don't apply here.
         pass
 
+    def get_success_url(self):
+        """
+        wir leiten nicht zum thank-you sondern zu unserem handle_payment
+        RedirectView:
+            1. dort wird dann nochmals mit PayPal (DoExpressCheckout)
+               kommuniziert
+            2. nach checkout:thank-you redirected
+        """
+        return reverse('paypal-handle-payment', kwargs={
+            "order_number": self.order_number,
+            "payer_id": self.payer_id,
+            "token": self.token,
+            "amount": self.txn.amount,
+            "currency": self.txn.currency,
+        })
+
     def handle_payment(self, order_number, total, **kwargs):
         """
-        Complete payment with PayPal - this calls the 'DoExpressCheckout'
-        method to capture the money from the initial transaction.
+        findet in eigener url: handle-payment statt (da wir zuerst eine
+        Order erzeugt haben (Transaction erst am Ende des Response) und
+        danach erst mit Paypal kommunizieren
         """
-        def handle_paypal_error(code=None):
-            basket = self.get_submitted_basket()
-            basket.thaw()
-            self.request.basket = basket
-            error_msg = _("A problem occurred while processing payment for this "
-                          "order - no payment has been taken.  Please "
-                          "contact customer services if this problem persists")
-            if code:
-                error_msg += ' [Code: %s]' % code
-            messages.error(self.request, error_msg)
-            raise RedirectRequired(reverse('basket:summary'))
-        try:
-            confirm_txn = confirm_transaction(
-                kwargs['payer_id'], kwargs['token'], kwargs['txn'].amount,
-                kwargs['txn'].currency)
-        except PayPalError as e:
-            ## 10486 error should be redirect to paypal
-            if e.message['code'] == '10486':
-                if getattr(settings, 'PAYPAL_SANDBOX_MODE', True):
-                    url = 'https://www.sandbox.paypal.com/webscr'
-                else:
-                    url = 'https://www.paypal.com/webscr'
-                params = (('cmd', '_express-checkout'),
-                          ('token', kwargs['token']),)
-                url = '%s?%s' % (url, urlencode(params))
-                raise RedirectRequired(url)
-            else:
-                handle_paypal_error(e.message['code'])
-            #raise PaymentError(msg)
-        if not confirm_txn.is_successful:
-            handle_paypal_error()
-
-        # Record payment source and event
-        source_type, is_created = SourceType.objects.get_or_create(
-            name='PayPal')
-        source = Source(source_type=source_type,
-                        currency=confirm_txn.currency,
-                        amount_allocated=confirm_txn.amount,
-                        amount_debited=confirm_txn.amount)
-        self.add_payment_source(source)
-        self.add_payment_event('Settled', confirm_txn.amount,
-                               reference=confirm_txn.correlation_id)
+        # wir setzen lediglich die order_number um in `get_success_url`
+        # darauf zugreifen zu koennen
+        self.order_number = order_number
+        self.payer_id = kwargs["payer_id"]
+        self.token = kwargs["token"]
+        self.txn = kwargs["txn"]
 
     def get_shipping_address(self, basket):
         """
