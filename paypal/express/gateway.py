@@ -103,6 +103,12 @@ def _fetch_response(method, extra_params):
             txn.error_code = pairs['L_ERRORCODE0']
         if 'L_LONGMESSAGE0' in pairs:
             txn.error_message = pairs['L_LONGMESSAGE0']
+        if 'TOKEN' in pairs:
+            txn.token = pairs['TOKEN']
+        elif 'TOKEN' in params:
+            txn.token = params['TOKEN']
+        if 'CORRELATIONID' in pairs:
+            txn.correlation_id = pairs['CORRELATIONID']
     txn.save()
 
     if not txn.is_successful:
@@ -378,6 +384,7 @@ def do_txn(payer_id, token, amount, currency, action=SALE):
     params = {
         'PAYERID': payer_id,
         'TOKEN': token,
+        #'PAYMENTREQUEST_0_AMT': 104.86,# amount,
         'PAYMENTREQUEST_0_AMT': amount,
         'PAYMENTREQUEST_0_CURRENCYCODE': currency,
         'PAYMENTREQUEST_0_PAYMENTACTION': action,
@@ -394,6 +401,7 @@ def do_capture(txn_id, amount, currency, complete_type='Complete',
     """
     params = {
         'AUTHORIZATIONID': txn_id,
+        #'AMT': 104.86, #amount,
         'AMT': amount,
         'CURRENCYCODE': currency,
         'COMPLETETYPE': complete_type,

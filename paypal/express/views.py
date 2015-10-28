@@ -237,6 +237,12 @@ class SuccessResponseView(PaymentDetailsView):
         these details to show a preview of the order with a 'submit' button to
         place it.
         """
+        # wir pruefen ob schon eine Order mit der basket_id gibt, wenn ja
+        # ist dies ein Hinweis auf einen PayPal Error (10486)
+        try:
+            order = Order.objects.get(basket_id=kwargs["basket_id"])
+        except Order.DoesNotExist:
+            order = None
         try:
             self.payer_id = request.GET['PayerID']
             self.token = request.GET['token']
@@ -257,7 +263,25 @@ class SuccessResponseView(PaymentDetailsView):
             messages.error(
                 self.request,
                 _("A problem occurred communicating with PayPal - please try again later"))
-            return HttpResponseRedirect(reverse('basket:summary'))
+
+            if not order:
+                # keine Order -> Basket
+                return HttpResponseRedirect(reverse('basket:summary'))
+            else:
+                # order -> Order
+                return HttpResponseRedirect(reverse('customer:order', kwargs={
+                    "order_number": order.number}))
+
+        if order:
+            # redirect to handle_paypal_payment
+            return HttpResponseRedirect(
+                reverse('paypal-handle-payment', kwargs={
+                    "order_number": order.number,
+                    "payer_id": self.payer_id,
+                    "token": self.token,
+                    "amount": self.txn.amount,
+                    "currency": self.txn.currency,
+                }))
 
         # Reload frozen basket which is specified in the URL
         kwargs['basket'] = self.load_frozen_basket(kwargs['basket_id'])
