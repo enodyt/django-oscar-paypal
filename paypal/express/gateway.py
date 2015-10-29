@@ -118,6 +118,7 @@ def _fetch_response(method, extra_params):
             'code': txn.error_code,
             'token': txn.token,
             'msg': txn.error_message,
+            'correlation_id': txn.correlation_id
         }
         raise exceptions.PayPalError(err)
 
@@ -384,7 +385,9 @@ def do_txn(payer_id, token, amount, currency, action=SALE):
     params = {
         'PAYERID': payer_id,
         'TOKEN': token,
-        #'PAYMENTREQUEST_0_AMT': 104.86,# amount,
+        #'PAYMENTREQUEST_0_AMT': 104.86,
+        #'PAYMENTREQUEST_0_AMT': 104.11,
+        #'PAYMENTREQUEST_0_AMT': 100.69,  # Payment refused due to risk
         'PAYMENTREQUEST_0_AMT': amount,
         'PAYMENTREQUEST_0_CURRENCYCODE': currency,
         'PAYMENTREQUEST_0_PAYMENTACTION': action,
@@ -402,6 +405,8 @@ def do_capture(txn_id, amount, currency, complete_type='Complete',
     params = {
         'AUTHORIZATIONID': txn_id,
         #'AMT': 104.86, #amount,
+        # 'AMT': 100.69,  # Payment refused due to risk
+        #'AMT': 104.11,  # Session expired
         'AMT': amount,
         'CURRENCYCODE': currency,
         'COMPLETETYPE': complete_type,

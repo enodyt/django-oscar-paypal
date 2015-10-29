@@ -147,16 +147,29 @@ class CancelResponseView(RedirectView):
     permanent = False
 
     def get(self, request, *args, **kwargs):
-        basket = get_object_or_404(Basket, id=kwargs['basket_id'],
-                                   status=Basket.FROZEN)
-        basket.thaw()
-        logger.info("Payment cancelled (token %s) - basket #%s thawed",
-                    request.GET.get('token', '<no token>'), basket.id)
+        try:
+            # handle order already generated (in case of errors: 10486)
+            order = Order.objects.get(basket_id=kwargs["basket_id"])
+            # change order state
+            order.set_status("Cancelled")
+            order.save()
+            # set redirect url -> order and not basket
+            self._redirect_url = reverse('customer:order', kwargs={
+                "order_number": order.number})
+        except Order.DoesNotExist:
+            basket = get_object_or_404(Basket, id=kwargs['basket_id'],
+                                       status=Basket.FROZEN)
+            basket.thaw()
+            logger.info("Payment cancelled (token %s) - basket #%s thawed",
+                        request.GET.get('token', '<no token>'), basket.id)
         return super(CancelResponseView, self).get(request, *args, **kwargs)
 
     def get_redirect_url(self, **kwargs):
         messages.error(self.request, _("PayPal transaction cancelled"))
-        return reverse('basket:summary')
+        try:
+            return self._redirect_url
+        except AttributeError:
+            return reverse('basket:summary')
 
 
 class HandlePaymentView(OrderPlacementMixin, RedirectView):
@@ -166,20 +179,42 @@ class HandlePaymentView(OrderPlacementMixin, RedirectView):
         Complete payment with PayPal - this calls the 'DoExpressCheckout'
         method to capture the money from the initial transaction.
         """
-        def handle_paypal_error(code=None):
+        def handle_paypal_error(order_number, amount, correlation_id,
+                                code=None):
             error_msg = _("A problem occurred while processing payment for "
                           "this order - no payment has been taken.  Please "
                           "contact customer services if this problem persists")
             if code:
                 error_msg += ' [Code: %s]' % code
             messages.error(self.request, error_msg)
+            # set order status
+            order = Order.objects.get(number=order_number)
+            order.set_status("Cancelled")
+            order.save()
+            self.add_payment_event('Failure', amount, reference=correlation_id)
             # set redirect url
             self._redirect_url = reverse('customer:order', kwargs={
-                "order_number": kwargs["order_number"]})
+                "order_number": order.number})
+
+        order = Order.objects.get(number=kwargs["order_number"])
+        order_number = kwargs["order_number"]
+        currency = kwargs["currency"]
+        amount = kwargs["amount"]
+        token = kwargs["token"]
+        payer_id = kwargs["payer_id"]
+
+        # add payment source
+        source_type, is_created = SourceType.objects.get_or_create(
+            name='PayPal')
+        source = Source(source_type=source_type,
+                        currency=currency,
+                        amount_allocated=amount,
+                        amount_debited=amount)
+        self.add_payment_source(source)
+
         try:
             confirm_txn = confirm_transaction(
-                kwargs['payer_id'], kwargs['token'], kwargs['amount'],
-                kwargs['currency'])
+                payer_id, token, amount, currency)
         except PayPalError as e:
             # 10486 error should be redirect to paypal
             if e.message['code'] == '10486':
@@ -188,28 +223,27 @@ class HandlePaymentView(OrderPlacementMixin, RedirectView):
                 else:
                     url = 'https://www.paypal.com/webscr'
                 params = (('cmd', '_express-checkout'),
-                          ('token', kwargs['token']),)
+                          ('token', token),)
                 url = '%s?%s' % (url, urlencode(params))
                 # we need to redirect to paypal so do so
                 self._redirect_url = url
             else:
-                handle_paypal_error(e.message['code'])
+                handle_paypal_error(order_number,
+                                    amount,
+                                    e.message["correlation_id"],
+                                    code=e.message["code"])
         else:
             if not confirm_txn.is_successful:
-                handle_paypal_error()
+                # irgend ein anderer Grund wieso es nicht geklappt hat
+                handle_paypal_error(
+                    order_number, amount, confirm_txn.correlation_id)
             else:
-                # finally everythings ok: Record payment source and event
-                order = Order.objects.get(number=kwargs["order_number"])
-                source_type, is_created = SourceType.objects.get_or_create(
-                    name='PayPal')
-                source = Source(source_type=source_type,
-                                currency=confirm_txn.currency,
-                                amount_allocated=confirm_txn.amount,
-                                amount_debited=confirm_txn.amount)
-                self.add_payment_source(source)
+                # everythings seems ok: Record payment source and event
                 self.add_payment_event('Settled', confirm_txn.amount,
                                        reference=confirm_txn.correlation_id)
-                self.save_payment_details(order)
+
+        # finally (and in any case) save payment detail
+        self.save_payment_details(order)
         return super(HandlePaymentView, self).get(request, *args, **kwargs)
 
     def get_redirect_url(self, **kwargs):
