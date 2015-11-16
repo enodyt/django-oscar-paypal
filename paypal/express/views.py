@@ -416,15 +416,22 @@ class SuccessResponseView(PaymentDetailsView):
         override this method to ensure they are valid before extracting their
         data into the submission dict and passing it onto `submit`.
         """
+        url = "%s?token=%s&PayerID=%s" % (
+            reverse('paypal-success-response',
+                    kwargs=dict(basket_id=basket.id)), self.token,
+            self.payer_id)
+        # gleiches Land bei Shipping und billing
+        shipping_addr = self.get_shipping_address(basket)
+        billing_addr = self.get_billing_address(shipping_addr)
+        if shipping_addr.country != billing_addr.country:
+            error_msg = _("Different Shipping and billing country")
+            messages.error(request, error_msg)
+            return HttpResponseRedirect(url)
         agbs = request.POST.get("agb", None)
         if not agbs:
-            error_msg = _(
-                "To place your order, you need to agree to our terms and condtition")
+            error_msg = _("To place your order, you need "
+                          "to agree to our terms and condtition")
             messages.error(request, error_msg)
-            url = "%s?token=%s&PayerID=%s" % (
-                reverse('paypal-success-response',
-                        kwargs=dict(basket_id=basket.id)), self.token,
-                self.payer_id)
             return HttpResponseRedirect(url)
         return self.submit(**self.build_submission(basket=basket))
 
