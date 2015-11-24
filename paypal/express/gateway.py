@@ -168,7 +168,7 @@ def set_txn(basket, shipping_methods, currency, return_url, cancel_url, update_u
 
     locale = _params.get('LOCALECODE', None)
     if locale:
-        valid_choices = ('AU', 'DE', 'FR', 'GB', 'IT', 'ES', 'JP', 'US')
+        valid_choices = ('AU', 'CH', 'DE', 'FR', 'GB', 'IT', 'ES', 'JP', 'US')
         if locale not in valid_choices:
             raise ImproperlyConfigured(
                 "'%s' is not a valid locale code" % locale)
