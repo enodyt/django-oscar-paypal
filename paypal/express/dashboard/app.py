@@ -8,13 +8,20 @@ from paypal.express.dashboard import views
 
 class ExpressDashboardApplication(Application):
     name = None
+    index_view = views.IndexView
     list_view = views.TransactionListView
+    list_wo_order_view = views.TransactionWoOrderListView
     detail_view = views.TransactionDetailView
 
     def get_urls(self):
         urlpatterns = patterns('',
-            url(r'^transactions/$', self.list_view.as_view(),
-                name='paypal-express-list'),
+            url(r'^transactions/$', self.index_view.as_view(),
+                name='paypal-express-transaction-index'),
+            url(r'^transactions_all/$', self.list_view.as_view(),
+                name='paypal-express-transaction-list'),
+            url(r'^transactions_wo_order/$',
+                self.list_wo_order_view.as_view(),
+                name='paypal-express-transaction-wo-order-list'),
             url(r'^transactions/(?P<pk>\d+)/$', self.detail_view.as_view(),
                 name='paypal-express-detail'),
         )

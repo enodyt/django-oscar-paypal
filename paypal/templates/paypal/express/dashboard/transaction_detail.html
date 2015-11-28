@@ -17,7 +17,7 @@
             PayPal <span class="divider">/</span>
         </li>
         <li>
-            <a href="{% url 'paypal-express-list' %}">{% trans "Express transactions" %}</a>
+            <a href="{% url 'paypal-express-transaction-index' %}">{% trans "Express transactions" %}</a>
             <span class="divider">/</span>
         </li>
         <li class="active">{{ txn.correlation_id }}</li>

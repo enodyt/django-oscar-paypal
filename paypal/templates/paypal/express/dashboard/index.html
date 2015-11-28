@@ -1,0 +1,30 @@
+{% extends 'dashboard/layout.html' %}
+{% load currency_filters %}
+{% load i18n %}
+{% load url from future %}
+
+{% block title %}
+  PayPal Express Transaktionen | {{ block.super }}
+{% endblock %}
+
+{% block breadcrumbs %}
+    <ul class="breadcrumb">
+        <li>
+            <a href="{% url 'dashboard:index' %}">{% trans "Dashboard" %}</a>
+            <span class="divider">/</span>
+        </li>
+        <li class="active">{% trans "PayPal Express Transaktionen" %}</li>
+    </ul>
+{% endblock %}
+
+{% block headertext %}
+    {% trans "PayPal Express Transaktionen" %}
+{% endblock %}
+
+{% block dashboard_content %}
+
+    <ul>
+      <li><a href="{% url 'paypal-express-transaction-list' %}">Alle Transaktionen</a></li>
+      <li><a href="{% url 'paypal-express-transaction-wo-order-list' %}">Transaktionen ohne Bestellung</a></li>
+    </ul>
+{% endblock dashboard_content %}
