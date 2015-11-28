@@ -10,6 +10,16 @@ class TransactionListView(generic.ListView):
     model = models.ExpressTransaction
     template_name = 'paypal/express/dashboard/transaction_list.html'
     context_object_name = 'transactions'
+    paginate_by = 50
+
+    def get_context_data(self, **kwargs):
+        # verknuepfe mit preauth data
+        ctx = super(TransactionListView, self).get_context_data(**kwargs)
+        emails = {}
+        for pa in models.ExpressTransactionPreAuth.objects.all():
+            emails[pa.token] = pa.email if pa.email else pa.customer.email
+        ctx['emails'] = emails
+        return ctx
 
 
 class TransactionDetailView(generic.DetailView):
